@@ -76,6 +76,25 @@ static void capture(HWND window, const wchar_t *filename) {
     require(MoveFileExW(L"build\\Release\\gui-test.bmp", filename, MOVEFILE_REPLACE_EXISTING) != FALSE,
             "preserve captured GUI state");
 }
+static void requireVisibleLayout(HWND window) {
+    RECT client; GetClientRect(window, &client);
+    for (HWND child = GetWindow(window, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+        if (!IsWindowVisible(child)) continue;
+        RECT bounds; GetWindowRect(child, &bounds);
+        MapWindowPoints(NULL, window, (POINT *)&bounds, 2);
+        if (bounds.left < 0 || bounds.top < 0 || bounds.right > client.right || bounds.bottom > client.bottom)
+            printf("Layout: control %d at (%ld,%ld)-(%ld,%ld), client (%ld,%ld)\n", GetDlgCtrlID(child),
+                bounds.left, bounds.top, bounds.right, bounds.bottom, client.right, client.bottom);
+        require(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= client.right &&
+                bounds.bottom <= client.bottom, "visible control stays inside the client area");
+    }
+    RECT list; GetClientRect(control(window, IDC_LIST), &list);
+    int total = 0;
+    for (int i = 0; i < 6; ++i) total += ListView_GetColumnWidth(control(window, IDC_LIST), i);
+    require(total <= list.right, "all six table columns fit without horizontal scrolling");
+    RECT dropped; SendMessageW(control(window, IDC_SCOPE), CB_GETDROPPEDCONTROLRECT, 0, (LPARAM)&dropped);
+    require(dropped.bottom - dropped.top > 70, "resizing preserves useful combo drop-down height");
+}
 static Entry waitEntry(RegistryStore &store, Source source, const wchar_t *object,
                        const wchar_t *verb, const std::wstring &label) {
     for (unsigned i = 0; i < 100; ++i) {
@@ -130,6 +149,23 @@ int main(int argc, char **argv) {
         require(text(window, IDC_SAVE) == L"\x4fdd\x5b58", "Chinese button caption");
         pass("native Unicode GUI starts with Chinese labels");
 
+        RECT initial; GetWindowRect(window, &initial);
+        require(initial.right - initial.left <= 800 && initial.bottom - initial.top <= 570,
+                "default window fits an 800x600 desktop with room for the taskbar");
+        requireVisibleLayout(window);
+        SetWindowPos(window, NULL, 20, 20, 730, 510, SWP_NOZORDER | SWP_NOACTIVATE);
+        Sleep(200);
+        requireVisibleLayout(window);
+        capture(window, L"build\\Release\\gui-compact.bmp");
+        SetWindowPos(window, NULL, 20, 20, 1060, 740, SWP_NOZORDER | SWP_NOACTIVATE);
+        Sleep(200);
+        requireVisibleLayout(window);
+        SetWindowPos(window, NULL, initial.left, initial.top, initial.right - initial.left,
+            initial.bottom - initial.top, SWP_NOZORDER | SWP_NOACTIVATE);
+        Sleep(200);
+        requireVisibleLayout(window);
+        pass("compact GUI fits 800x600; resizing preserves visible controls, columns and combo lists");
+
         waitRows(window, 0);
         require(IsWindowVisible(control(window, IDC_EMPTY)) && !IsWindowEnabled(control(window, IDC_LABEL)),
                 "empty table explains the next action and editor awaits New");
@@ -171,6 +207,13 @@ int main(int argc, char **argv) {
         // Wait for refresh/selection after save before changing the editor again.
         waitEditor(window, false);
         waitRows(window, 1);
+        SetWindowPos(window, NULL, 0, 0, 730, 510, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        Sleep(200);
+        requireVisibleLayout(window);
+        require(text(window, IDC_COMMAND) == original.command && !IsWindowEnabled(control(window, IDC_SAVE)),
+                "resizing preserves the full command without introducing unsaved changes");
+        SetWindowPos(window, NULL, 0, 0, initial.right - initial.left, initial.bottom - initial.top,
+            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
         text(window, IDC_LABEL, L"\x66f4\x65b0\x540d\x79f0"); click(window, IDC_SAVE);
         Entry updated = waitEntry(store, CurrentUser, L"*", L"GuiOpen", L"\x66f4\x65b0\x540d\x79f0");
         require(updated.command == original.command, "label-only edit preserves command bytes");

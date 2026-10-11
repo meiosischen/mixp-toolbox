@@ -1,0 +1,31 @@
+MAKE Version 5.2  Copyright (c) 1987, 2000 Borland
+	"Z:\tmp\MIXP~HQF\bcb6\Bin\brcc32.exe" -i"Z:\tmp\MIXP~HQF\bcb6\Include" -fobuild\Release\MixpToolbox.res MixpToolbox.rc
+Borland Resource Compiler  Version 5.40
+Copyright (c) 1990, 1999 Inprise Corporation.  All rights reserved.
+	"Z:\tmp\MIXP~HQF\bcb6\Bin\ilink32.exe" -Tpe -aa -x -Gn -v- -L"Z:\tmp\MIXP~HQF\bcb6\Lib" -L"Z:\tmp\MIXP~HQF\bcb6\Lib\Psdk" -L"Z:\tmp\MIXP~HQF\bcb6\Lib\Obj" c0w32.obj build\Release\MixpToolbox.obj build\Release\MainWindow.obj build\Release\MenuRegistry.obj,build\Release\mixp-toolbox.exe,,import32.lib cw32mt.lib,,build\Release\MixpToolbox.res
+Turbo Incremental Link 5.60 Copyright (c) 1997-2002 Borland
+MAKE Version 5.2  Copyright (c) 1987, 2000 Borland
+	"Z:\tmp\MIXP~HQF\bcb6\Bin\ilink32.exe" -Tpe -aa -x -Gn -v- -L"Z:\tmp\MIXP~HQF\bcb6\Lib" -L"Z:\tmp\MIXP~HQF\bcb6\Lib\Psdk" -L"Z:\tmp\MIXP~HQF\bcb6\Lib\Obj" c0w32.obj build\Release\TestMain.obj build\Release\TestWindow.obj build\Release\MenuRegistry.obj,build\Release\mixp-toolbox-test.exe,,import32.lib cw32mt.lib,,build\Release\MixpToolbox.res
+Turbo Incremental Link 5.60 Copyright (c) 1997-2002 Borland
+PASS: five scopes and extension resolution without association changes
+PASS: Unicode create/read, duplicate rejection and HKCU/HKLM separation
+PASS: all-scope overview finds static menus outside the all-files branch
+PASS: update with automatic backup; real regedit restores all metadata and flags
+PASS: recursive delete/export/import round trip with Unicode, binary and REG_MULTI_SZ
+PASS: external registry changes block stale writes and deletes
+PASS: unwritable backup location prevents mutation
+PASS: DDE/handler/missing-command entries stay read-only
+PASS: input validation, quoting, raw-command fallback and case-insensitive search
+RESULT: 9 groups passed; all writes isolated under Software\MixpToolboxTests.
+PASS: native Unicode GUI starts with Chinese labels
+PASS: compact GUI fits 800x600; resizing preserves visible controls, columns and combo lists
+PASS: GUI refresh has explicit empty feedback and discovers static menus across types
+PASS: first New click enables editor and displays Add Menu feedback
+PASS: GUI creates a menu with Chinese path and default arguments
+PASS: GUI modifies the display name without rewriting arguments
+PASS: GUI live search filters the saved list
+PASS: overview searches types and edits the correct target with duplicate menu IDs
+PASS: GUI saves enable/Shift flags; captures the actual window
+PASS: GUI source selection and confirmed deletion preserve the other source
+RESULT: 10 GUI groups passed; application writes isolated under Software\MixpToolboxTests.
+PASS: shipped Release executable starts and closes; no menu changes made.

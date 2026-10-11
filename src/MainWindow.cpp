@@ -14,12 +14,22 @@ namespace {
 using namespace mixp;
 
 class Window {
+    struct ControlLayout {
+        HWND handle;
+        RECT bounds;
+        int dropHeight;
+    };
     HWND window_;
+    HWND tooltips_;
     RegistryStore &store_;
     std::vector<Entry> entries_;
     int selected_, scope_, sourceFilter_;
     bool loading_, dirty_, creating_;
     std::wstring object_;
+    std::wstring tooltipText_;
+    std::vector<ControlLayout> layout_;
+    int baseWidth_, baseHeight_;
+    RECT listBounds_;
 
     HWND control(int id) { return GetDlgItem(window_, id); }
     void text(int id, const std::wstring &s) { SetWindowTextW(control(id), s.c_str()); }
@@ -36,6 +46,85 @@ class Window {
     void combo(int id, int index) { SendMessageW(control(id), CB_SETCURSEL, index, 0); }
     void addCombo(int id, const wchar_t *s) { SendMessageW(control(id), CB_ADDSTRING, 0, (LPARAM)s); }
 
+    void fitColumns() {
+        RECT client; GetClientRect(control(IDC_LIST), &client);
+        int available = client.right - GetSystemMetrics(SM_CXVSCROLL) - 2;
+        if (available <= 0) return;
+        const int percent[] = {22, 16, 17, 12, 10};
+        int used = 0;
+        for (int i = 0; i < 6; ++i) {
+            int width = i == 5 ? available - used : MulDiv(available, percent[i], 100);
+            ListView_SetColumnWidth(control(IDC_LIST), i, width);
+            used += width;
+        }
+    }
+    RECT workArea() {
+        MONITORINFO monitor; ZeroMemory(&monitor, sizeof(monitor)); monitor.cbSize = sizeof(monitor);
+        if (GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor)) return monitor.rcWork;
+        RECT work = {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+        return work;
+    }
+    void rememberLayout() {
+        RECT client; GetClientRect(window_, &client);
+        baseWidth_ = client.right; baseHeight_ = client.bottom;
+        for (HWND child = GetWindow(window_, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+            ControlLayout item; item.handle = child; item.dropHeight = 0;
+            GetWindowRect(child, &item.bounds);
+            MapWindowPoints(NULL, window_, (POINT *)&item.bounds, 2);
+            int id = GetDlgCtrlID(child);
+            if (id == IDC_LIST) listBounds_ = item.bounds;
+            if (id == IDC_SCOPE || id == IDC_VIEW_SOURCE || id == IDC_SOURCE) {
+                RECT dropped;
+                if (SendMessageW(child, CB_GETDROPPEDCONTROLRECT, 0, (LPARAM)&dropped))
+                    item.dropHeight = dropped.bottom - dropped.top;
+            }
+            layout_.push_back(item);
+        }
+    }
+    void resize(int width, int height) {
+        if (!baseWidth_ || !width || !height) return;
+        bool wasLoading = loading_; loading_ = true;
+        int difference = height - baseHeight_;
+        for (size_t i = 0; i < layout_.size(); ++i) {
+            const ControlLayout &item = layout_[i];
+            int left = MulDiv(item.bounds.left, width, baseWidth_);
+            int right = MulDiv(item.bounds.right, width, baseWidth_);
+            int top = item.bounds.top, size = item.bounds.bottom - item.bounds.top;
+            if (item.handle == control(IDC_LIST)) size += difference;
+            else if (top >= listBounds_.bottom) top += difference;
+            if (item.dropHeight) size = item.dropHeight;
+            if (size < 1) size = 1;
+            MoveWindow(item.handle, left, top, right - left, size, TRUE);
+        }
+        fitColumns(); loading_ = wasLoading;
+        InvalidateRect(window_, NULL, TRUE);
+    }
+    void fitWindow() {
+        RECT work = workArea(), frame; GetWindowRect(window_, &frame);
+        int width = frame.right - frame.left, height = frame.bottom - frame.top;
+        if (width > work.right - work.left - 8) width = work.right - work.left - 8;
+        if (height > work.bottom - work.top - 8) height = work.bottom - work.top - 8;
+        SetWindowPos(window_, NULL, work.left + (work.right - work.left - width) / 2,
+            work.top + (work.bottom - work.top - height) / 2, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    void addTooltip(int id) {
+        TOOLINFOW tool; ZeroMemory(&tool, sizeof(tool));
+        tool.cbSize = sizeof(tool); tool.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        tool.hwnd = window_; tool.uId = (UINT_PTR)control(id); tool.lpszText = LPSTR_TEXTCALLBACKW;
+        SendMessageW(tooltips_, TTM_ADDTOOLW, 0, (LPARAM)&tool);
+    }
+    void initializeTooltips() {
+        tooltips_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, NULL,
+            WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT, CW_USEDEFAULT,
+            CW_USEDEFAULT, CW_USEDEFAULT, window_, NULL, GetModuleHandle(NULL), NULL);
+        if (!tooltips_) return;
+        SendMessageW(tooltips_, TTM_SETMAXTIPWIDTH, 0, 520);
+        SendMessageW(tooltips_, TTM_SETDELAYTIME, TTDT_AUTOPOP, 20000);
+        addTooltip(IDC_LOCATION); addTooltip(IDC_STATUS); addTooltip(IDC_PROGRAM);
+        addTooltip(IDC_ARGUMENTS); addTooltip(IDC_COMMAND); addTooltip(IDC_ENVIRONMENT);
+        addTooltip(IDC_HINT);
+    }
     void error(const Error &e) {
         MessageBoxW(window_, e.message.c_str(), L"MixP Toolbox - \x64cd\x4f5c\x672a\x5b8c\x6210", MB_OK | MB_ICONERROR);
     }
@@ -157,13 +246,14 @@ class Window {
             ++row;
         }
         SendMessageW(list, WM_SETREDRAW, TRUE, 0); InvalidateRect(list, NULL, TRUE);
+        fitColumns();
         text(IDC_EMPTY, entries_.empty() ?
             L"\x6b64\x8303\x56f4\x6682\x65e0\x9759\x6001\x83dc\x5355\x3002\r\n\x53ef\x5207\x6362\x8303\x56f4\x67e5\x770b\xff0c\x6216\x70b9\x201c\x65b0\x589e\x201d\x6dfb\x52a0\x3002" :
             L"\x6ca1\x6709\x5339\x914d\x7684\x83dc\x5355\x3002\r\n\x8bf7\x6e05\x7a7a\x641c\x7d22\x6761\x4ef6\x540e\x67e5\x770b\x3002");
         ShowWindow(control(IDC_EMPTY), row ? SW_HIDE : SW_SHOWNOACTIVATE);
         loading_ = wasLoading;
         std::wostringstream count;
-        count << L"\x663e\x793a " << row << L" / " << entries_.size() << L" \x9879\xff1b\x9009\x4e2d\x9879\x53ef\x7f16\x8f91\xff0c\x70b9\x201c\x65b0\x589e\x201d\x6dfb\x52a0\x83dc\x5355\x3002";
+        count << L"\x663e\x793a " << row << L" / " << entries_.size() << L" \x9879";
         text(IDC_STATUS, count.str());
     }
     void refresh() {
@@ -178,19 +268,19 @@ class Window {
         newEditor(); showList();
     }
     void labels() {
-        SetWindowTextW(window_, L"MixP Toolbox 0.1.1 - \x53f3\x952e\x83dc\x5355\x7ba1\x7406");
-        text(IDC_HEADER, L"MixP Toolbox 0.1.1  /  \x53f3\x952e\x83dc\x5355\x7ba1\x7406");
+        SetWindowTextW(window_, L"MixP Toolbox 0.1.2 - \x53f3\x952e\x83dc\x5355\x7ba1\x7406");
+        text(IDC_HEADER, L"MixP Toolbox 0.1.2  /  \x53f3\x952e\x83dc\x5355\x7ba1\x7406");
         text(IDC_LABEL_SCOPE, L"\x4f5c\x7528\x8303\x56f4"); text(IDC_LABEL_EXT, L"\x6269\x5c55\x540d");
-        text(IDC_LABEL_VIEW, L"\x67e5\x770b\x6765\x6e90"); text(IDC_LABEL_SEARCH, L"\x641c\x7d22");
+        text(IDC_LABEL_VIEW, L"\x6765\x6e90"); text(IDC_LABEL_SEARCH, L"\x641c\x7d22");
         text(IDC_REFRESH, L"\x5237\x65b0"); text(IDC_NEW, L"\x65b0\x589e"); text(IDC_DELETE, L"\x5220\x9664");
         text(IDC_EXPORT, L"\x5bfc\x51fa\x9009\x4e2d\x9879"); text(IDC_LABEL_VERB, L"\x5185\x90e8\x6807\x8bc6");
         text(IDC_LABEL_NAME, L"\x83dc\x5355\x540d\x79f0"); text(IDC_LABEL_SOURCE, L"\x4fdd\x5b58\x4f4d\x7f6e");
         text(IDC_LABEL_PROGRAM, L"\x7a0b\x5e8f\x8def\x5f84"); text(IDC_BROWSE, L"\x6d4f\x89c8\x2026");
         text(IDC_LABEL_ARGS, L"\x542f\x52a8\x53c2\x6570"); text(IDC_RAW, L"\x76f4\x63a5\x7f16\x8f91\x5b8c\x6574\x547d\x4ee4");
         text(IDC_LABEL_COMMAND, L"\x5b8c\x6574\x547d\x4ee4"); text(IDC_ENABLED, L"\x542f\x7528");
-        text(IDC_EXTENDED, L"\x4ec5 Shift \x663e\x793a"); text(IDC_ENVIRONMENT, L"\x4f7f\x7528\x73af\x5883\x53d8\x91cf\xff08\x5982 %SystemRoot%\xff09");
+        text(IDC_EXTENDED, L"\x4ec5 Shift \x663e\x793a"); text(IDC_ENVIRONMENT, L"\x73af\x5883\x53d8\x91cf");
         text(IDC_SAVE, L"\x4fdd\x5b58");
-        text(IDC_HINT, L"\x53c2\x6570\x4e2d\x7684 \"%1\" \x8868\x793a\x6240\x9009\x6587\x4ef6\x3001\x6587\x4ef6\x5939\x6216\x9a71\x52a8\x5668\xff1b\x7a0b\x5e8f\x8def\x5f84\x4f1a\x81ea\x52a8\x52a0\x5f15\x53f7\x3002");
+        text(IDC_HINT, L"\"%1\" \x8868\x793a\x6240\x9009\x8def\x5f84\xff1b\x7a0b\x5e8f\x8def\x5f84\x81ea\x52a8\x52a0\x5f15\x53f7\x3002");
     }
     void browse() {
         wchar_t file[MAX_PATH] = {0};
@@ -203,8 +293,8 @@ class Window {
         if (GetOpenFileNameW(&dialog)) text(IDC_PROGRAM, file);
     }
 public:
-    explicit Window(RegistryStore &store) : window_(NULL), store_(store), selected_(-1),
-        scope_(AllScopes), sourceFilter_(-1), loading_(true), dirty_(false), creating_(false) {}
+    explicit Window(RegistryStore &store) : window_(NULL), tooltips_(NULL), store_(store), selected_(-1),
+        scope_(AllScopes), sourceFilter_(-1), loading_(true), dirty_(false), creating_(false), baseWidth_(0), baseHeight_(0) {}
     void initialize(HWND window) {
         window_ = window;
         labels();
@@ -220,7 +310,7 @@ public:
         SendMessageW(control(IDC_EXTENSION), EM_SETLIMITTEXT, 255, 0);
         SendMessageW(control(IDC_COMMAND), EM_SETLIMITTEXT, 32767, 0);
         SendMessageW(control(IDC_ARGUMENTS), EM_SETLIMITTEXT, 32767, 0);
-        ListView_SetExtendedListViewStyle(control(IDC_LIST), LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
+        ListView_SetExtendedListViewStyle(control(IDC_LIST), LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_INFOTIP | LVS_EX_LABELTIP);
         SendMessageW(control(IDC_LIST), LVM_SETUNICODEFORMAT, TRUE, 0);
         column(0, L"\x83dc\x5355\x540d\x79f0", 160); column(1, L"\x5185\x90e8\x6807\x8bc6", 120);
         column(2, L"\x4f5c\x7528\x7c7b\x578b", 130); column(3, L"\x6765\x6e90", 90);
@@ -230,6 +320,12 @@ public:
         HICON icon = LoadIcon(NULL, IDI_APPLICATION);
         SendMessageW(window_, WM_SETICON, ICON_BIG, (LPARAM)icon);
         SendMessageW(window_, WM_SETICON, ICON_SMALL, (LPARAM)icon);
+    }
+    void prepareLayout() {
+        // Capture coordinates after CreateDialogParam has completed dialog sizing.
+        rememberLayout();
+        initializeTooltips();
+        fitWindow();
     }
     INT_PTR message(UINT message, WPARAM wparam, LPARAM lparam);
 };
@@ -243,6 +339,24 @@ INT_PTR Window::message(UINT message, WPARAM wparam, LPARAM lparam) {
         return TRUE;
     }
 #endif
+    if (message == WM_SIZE && wparam != SIZE_MINIMIZED) {
+        resize(LOWORD(lparam), HIWORD(lparam));
+        return TRUE;
+    }
+    if (message == WM_GETMINMAXINFO && baseWidth_) {
+        RECT frame, client, work = workArea();
+        GetWindowRect(window_, &frame); GetClientRect(window_, &client);
+        int borderWidth = frame.right - frame.left - client.right;
+        int borderHeight = frame.bottom - frame.top - client.bottom;
+        int width = (baseWidth_ < 700 ? baseWidth_ : 700) + borderWidth;
+        int height = baseHeight_ - (listBounds_.bottom - listBounds_.top) +
+            GetSystemMetrics(SM_CYVSCROLL) * 2 + 20 + borderHeight;
+        if (width > work.right - work.left - 8) width = work.right - work.left - 8;
+        if (height > work.bottom - work.top - 8) height = work.bottom - work.top - 8;
+        MINMAXINFO *limits = (MINMAXINFO *)lparam;
+        limits->ptMinTrackSize.x = width; limits->ptMinTrackSize.y = height;
+        return TRUE;
+    }
     if (message == WM_CLOSE) {
         if (discard()) DestroyWindow(window_);
         return TRUE;
@@ -250,6 +364,27 @@ INT_PTR Window::message(UINT message, WPARAM wparam, LPARAM lparam) {
     if (message == WM_DESTROY) { PostQuitMessage(0); return TRUE; }
     if (message == WM_NOTIFY) {
         NMHDR *header = (NMHDR *)lparam;
+        if (header->hwndFrom == tooltips_ && header->code == TTN_GETDISPINFOW) {
+            NMTTDISPINFOW *tip = (NMTTDISPINFOW *)lparam;
+            int id = GetDlgCtrlID((HWND)tip->hdr.idFrom);
+            if (id == IDC_ENVIRONMENT)
+                tooltipText_ = L"\x547d\x4ee4\x4e2d\x4f7f\x7528\x73af\x5883\x53d8\x91cf\xff0c\x4f8b\x5982 %SystemRoot%\\notepad.exe\x3002";
+            else tooltipText_ = text(id);
+            tip->lpszText = (LPWSTR)tooltipText_.c_str();
+            return TRUE;
+        }
+        if (header->idFrom == IDC_LIST && header->code == LVN_GETINFOTIPW) {
+            NMLVGETINFOTIPW *tip = (NMLVGETINFOTIPW *)lparam;
+            LVITEMW item; ZeroMemory(&item, sizeof(item));
+            item.mask = LVIF_PARAM; item.iItem = tip->iItem;
+            if (SendMessageW(control(IDC_LIST), LVM_GETITEMW, 0, (LPARAM)&item) &&
+                item.lParam >= 0 && item.lParam < (LPARAM)entries_.size()) {
+                const Entry &entry = entries_[item.lParam];
+                std::wstring detail = entry.label + L"\r\n" + store_.location(entry) + L"\r\n" + entry.command;
+                lstrcpynW(tip->pszText, detail.c_str(), tip->cchTextMax);
+            }
+            return TRUE;
+        }
         if (header->idFrom == IDC_LIST && header->code == LVN_ITEMCHANGED && !loading_) {
             NMLISTVIEW *change = (NMLISTVIEW *)lparam;
             if ((change->uChanged & LVIF_STATE) && (change->uNewState & LVIS_SELECTED) &&
@@ -405,11 +540,12 @@ static INT_PTR CALLBACK dialogProc(HWND dialog, UINT message, WPARAM wparam, LPA
 
 int runMainWindow(HINSTANCE instance, mixp::RegistryStore &store, int show) {
     INITCOMMONCONTROLSEX controls; controls.dwSize = sizeof(controls);
-    controls.dwICC = ICC_LISTVIEW_CLASSES;
+    controls.dwICC = ICC_WIN95_CLASSES;
     if (!InitCommonControlsEx(&controls)) throw mixp::Error(L"\x65e0\x6cd5\x521d\x59cb\x5316\x5217\x8868\x63a7\x4ef6\x3002");
     Window window(store);
     HWND dialog = CreateDialogParamW(instance, MAKEINTRESOURCEW(IDD_MAIN), NULL, dialogProc, (LPARAM)&window);
     if (!dialog) throw mixp::Error(L"\x65e0\x6cd5\x521b\x5efa\x7a0b\x5e8f\x7a97\x53e3\x3002", GetLastError());
+    window.prepareLayout();
     ShowWindow(dialog, show); UpdateWindow(dialog);
     MSG message;
     int result;

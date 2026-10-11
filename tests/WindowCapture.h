@@ -2,13 +2,14 @@
 #define MIXP_TEST_WINDOW_CAPTURE_H
 // Called in the GUI process: Wine device contexts cannot be shared with another process.
 static BOOL captureTestWindow(HWND window) {
-    RECT rect; GetWindowRect(window, &rect);
+    RedrawWindow(window, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RECT rect; GetClientRect(window, &rect);
     int width = rect.right - rect.left, height = rect.bottom - rect.top;
     BITMAPINFO info; ZeroMemory(&info, sizeof(info));
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); info.bmiHeader.biWidth = width;
     info.bmiHeader.biHeight = height; info.bmiHeader.biPlanes = 1; info.bmiHeader.biBitCount = 24;
     DWORD stride = (width * 3 + 3) & ~3, size = stride * height;
-    HDC screen = GetWindowDC(window), memory = CreateCompatibleDC(screen);
+    HDC screen = GetDC(window), memory = CreateCompatibleDC(screen);
     void *pixels = NULL; HBITMAP bitmap = CreateDIBSection(screen, &info, DIB_RGB_COLORS, &pixels, NULL, 0);
     if (!screen || !memory || !bitmap) return FALSE;
     HGDIOBJ old = SelectObject(memory, bitmap);

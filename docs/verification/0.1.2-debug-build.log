@@ -1,0 +1,6 @@
+MAKE Version 5.2  Copyright (c) 1987, 2000 Borland
+	"Z:\tmp\MIXP~HQF\bcb6\Bin\brcc32.exe" -i"Z:\tmp\MIXP~HQF\bcb6\Include" -fobuild\Debug\MixpToolbox.res MixpToolbox.rc
+Borland Resource Compiler  Version 5.40
+Copyright (c) 1990, 1999 Inprise Corporation.  All rights reserved.
+	"Z:\tmp\MIXP~HQF\bcb6\Bin\ilink32.exe" -Tpe -aa -x -Gn -v -L"Z:\tmp\MIXP~HQF\bcb6\Lib" -L"Z:\tmp\MIXP~HQF\bcb6\Lib\Psdk" -L"Z:\tmp\MIXP~HQF\bcb6\Lib\Obj" c0w32.obj build\Debug\MixpToolbox.obj build\Debug\MainWindow.obj build\Debug\MenuRegistry.obj,build\Debug\mixp-toolbox.exe,,import32.lib cw32mt.lib,,build\Debug\MixpToolbox.res
+Turbo Incremental Link 5.60 Copyright (c) 1997-2002 Borland

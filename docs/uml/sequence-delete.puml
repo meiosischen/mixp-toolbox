@@ -1,0 +1,68 @@
+@startuml sequence_delete
+title MixP Toolbox 0.1.2 — 删除、自动备份与失败恢复
+autonumber
+skinparam shadowing false
+skinparam defaultFontName "Arial Unicode MS"
+hide footbox
+
+actor "用户" as User
+boundary "主界面\nWindow / dialogProc" as UI
+control "RegistryStore\n及同文件辅助函数" as Store
+database "HKCU / HKLM\n菜单子树" as Registry
+participant "文件系统\n备份目录 / .reg" as Files
+participant "Windows Shell" as Shell
+
+User -> UI : 选中菜单，点击删除：IDC_DELETE
+UI -> UI : 构建包含名称和 location(entry) 的确认提示
+UI --> User : MessageBoxW：是否删除该项及其子项？
+alt 用户取消
+  User -> UI : 选择否
+  UI --> User : 保持当前项
+else 用户确认
+  User -> UI : 选择是
+  UI -> Store : remove(entry)
+  Store -> Store : checkCurrent(entry) → read()
+  Store -> Registry : 读取当前完整快照
+  Registry --> Store : latest.snapshot 或 Error
+  Store -> Store : 读取成功时比较\nsameTree(entry.snapshot, latest.snapshot)
+  alt 读取失败或快照不同
+    Store --> UI : 抛出 Error
+    UI --> User : 显示错误；不开始删除
+  else 快照一致
+    Store -> Store : backup(entry) / exportTree()
+    Store -> Files : 创建备份目录，CREATE_NEW 写入旧子树 .reg
+    Files --> Store : 备份路径或 Error
+    alt 备份失败
+      Store --> UI : 抛出 Error
+      UI --> User : 显示备份错误；不开始删除
+    else 备份成功
+      Store -> Store : deleteTree(root, target)
+      loop 深度优先删除菜单子树
+        Store -> Registry : 枚举子键、递归 deleteTree()\n关闭句柄 → RegDeleteKeyW()
+        Registry --> Store : 删除结果
+      end
+      alt 删除失败
+        Store -> Registry : RegCreateKeyExW(target) 尝试重新打开或创建目标键
+        Registry --> Store : 句柄或错误状态
+        opt 重新打开或创建成功
+          Store -> Store : restoreTree(entry.snapshot)
+          Store -> Registry : 恢复快照中的值及子键
+          Registry --> Store : 恢复结果
+        end
+        Store --> UI : 抛出删除错误，或恢复过程中发生的错误
+        UI --> User : 显示错误；需要时可手动导入 .reg 备份
+      else 删除成功
+        Store --> UI : 返回删除前备份路径
+        UI -> Shell : SHChangeNotify(SHCNE_ASSOCCHANGED)
+        UI -> UI : dirty_=false → refresh()
+        UI --> User : 显示删除成功及备份路径
+      end
+    end
+  end
+end
+
+note over Store, Registry
+  复杂处理程序项也可删除，不以 editable 为删除条件。
+  恢复是失败后的补偿尝试，没有事务或并发锁保证。
+end note
+@enduml

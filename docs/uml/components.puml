@@ -1,0 +1,72 @@
+@startuml components
+title MixP Toolbox 0.1.2 — UML 组件图
+left to right direction
+skinparam shadowing false
+skinparam componentStyle uml2
+skinparam defaultFontName "Arial Unicode MS"
+
+package "mixp-toolbox.exe（单进程）" {
+  component "应用入口\nMixpToolbox.cpp\nWinMain()" as App
+  component "窗口与交互\nsrc/MainWindow.cpp\nWindow / dialogProc / runMainWindow" as UI
+  component "注册表存储\nsrc/MenuRegistry.cpp\nmixp::RegistryStore" as Store
+  component "命令与快照辅助函数\nsrc/MenuRegistry.cpp\nbuildCommand / splitCommand / sameTree" as Helpers
+  artifact "数据类型声明\nsrc/MenuRegistry.h\nEntry / Draft / Tree / Value / Error" as Model
+  artifact "已编译的对话框资源\nMixpToolbox.rc / src/resource.h\nIDD_MAIN" as DialogResource
+}
+
+package "Windows XP 系统接口" {
+  component "窗口和消息\nUSER32" as User32
+  component "列表与工具提示\nCOMCTL32" as Comctl32
+  component "文件选择对话框\nCOMDLG32" as Comdlg32
+  component "Unicode 注册表 API\nADVAPI32" as Advapi32
+  component "文件与目录 API\nKERNEL32" as Kernel32
+  component "Shell 接口\nSHELL32" as Shell32
+}
+
+database "注册表\nHKCU / HKLM\nSoftware\\Classes\\<object>\\shell\\<verb>" as Registry
+folder "本地文件\n自动备份 / 手动导出\nUTF-16LE .reg" as RegFiles
+component "Windows Explorer" as Explorer
+component "regedit.exe" as Regedit
+actor "用户" as User
+
+User --> UI : 查询 / 搜索 / 增删改 / 导出
+App --> Store : 构造 RegistryStore
+App --> UI : runMainWindow(instance, store, show)
+UI ..> DialogResource : CreateDialogParamW(IDD_MAIN)
+UI --> User32 : 窗口、消息、控件文本和布局
+UI --> Comctl32 : ListView / Tooltip
+UI --> Comdlg32 : 浏览程序 / 选择导出文件
+UI --> Store : listAll / list / objectFor\ncreate / update / remove / exportEntry
+UI --> Helpers : 生成 / 拆分命令、搜索文本
+Store --> Helpers : sameTree() 校验原始快照
+UI ..> Model : Entry / Draft / Error
+Store ..> Model : Tree / Value / Entry / Error
+Store --> Advapi32 : RegOpen / RegEnum / RegSet / RegDelete
+Advapi32 --> Registry : 读取和修改菜单子树
+Store --> Kernel32 : 创建目录、写入 .reg 文件
+Kernel32 --> RegFiles : 写文件和失败时清理
+Store --> Shell32 : SHGetFolderPathW 获取备份目录
+UI --> Shell32 : SHChangeNotify(SHCNE_ASSOCCHANGED)
+Shell32 ..> Explorer : 通知关联配置发生变化
+Explorer ..> Registry : Shell 使用注册表配置
+User --> Regedit : 手动打开备份文件恢复
+Regedit ..> RegFiles : 读取 .reg 文件
+Regedit --> Registry : 删除指定分支后导入快照
+
+note bottom of DialogResource
+  主界面由 Win32 资源模板加载。
+  当前工程没有 VCL TForm 或 .dfm。
+end note
+
+note bottom of Store
+  修改、删除前：checkCurrent() → backup() → 写入。
+  导出前也校验快照；新增不创建自动备份。
+  图中的辅助函数与 RegistryStore 位于同一源文件，
+  组件框表示职责划分，不表示独立 DLL 或服务。
+end note
+
+note bottom of Registry
+  按来源分别读取 HKCU 和 HKLM，不将同名项合成一项。
+  管理 shell 静态项；不枚举 shellex COM 动态扩展。
+end note
+@enduml

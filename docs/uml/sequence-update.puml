@@ -1,0 +1,72 @@
+@startuml sequence_update
+title MixP Toolbox 0.1.2 — 修改、快照校验、自动备份与失败恢复
+autonumber
+skinparam shadowing false
+skinparam defaultFontName "Arial Unicode MS"
+hide footbox
+
+actor "用户" as User
+boundary "主界面\nWindow / dialogProc" as UI
+control "RegistryStore\n及同文件辅助函数" as Store
+database "HKCU / HKLM\n菜单子树" as Registry
+participant "文件系统\n备份目录 / .reg" as Files
+participant "Windows Shell" as Shell
+
+User -> UI : 选择已有项并编辑
+UI -> UI : loadEditor(index)；随后 changed() 设置 dirty_=true
+User -> UI : 点击保存：IDC_SAVE
+UI -> UI : 从控件构建 Draft
+UI -> Store : update(entries_[selected_], draft)
+Store -> Store : validate(draft)\n检查 original.editable 及 source/object/verb 不变
+alt 输入无效、不可编辑或标识被改变
+  Store --> UI : 抛出 Error
+  UI --> User : 显示错误；保留编辑内容
+else 基础校验通过
+  Store -> Store : checkCurrent(original) → read()
+  Store -> Registry : 读取当前完整快照
+  Registry --> Store : latest.snapshot
+  Store -> Store : 读取成功时比较\nsameTree(original.snapshot, latest.snapshot)
+  alt 读取失败或快照不同
+    Store --> UI : 抛出 Error；快照不同时要求先刷新
+    UI --> User : 显示错误；不开始修改
+  else 快照一致
+    Store -> Store : backup(original)\nexportTree() 序列化旧快照
+    Store -> Files : makeDirectories()；writeRegFile(overwrite=false)\nCREATE_NEW，写 UTF-16LE BOM 和 .reg 内容
+    Files --> Store : 备份路径或 Error
+    alt 备份失败
+      Store --> UI : 抛出 Error；不开始修改
+      UI --> User : 显示备份错误
+    else 备份成功
+      Store -> Registry : 打开菜单键和已有 command 键\n请求 KEY_READ | KEY_WRITE
+      Registry --> Store : 句柄或 Error
+      alt 打开写入句柄失败
+        Store --> UI : 抛出 Error；备份文件保留
+        UI --> User : 显示错误
+      else 句柄可用
+        Store -> Store : apply(key, draft, original.labelType)
+        Store -> Registry : 写名称、command 默认值\n设置或删除 LegacyDisable / Extended
+        Registry --> Store : 写入结果
+        alt apply() 失败
+          Store -> Store : restoreValue() 恢复受本次修改影响的值
+          Store -> Registry : 恢复菜单默认值、LegacyDisable、Extended\n及 command 默认值
+          Registry --> Store : 恢复结果
+          Store --> UI : 重新抛出错误；恢复失败时抛出恢复错误
+          UI --> User : 显示错误；需要时可手动导入 .reg 备份
+        else 写入成功
+          Store --> UI : 返回修改前的备份路径
+          UI -> Shell : SHChangeNotify(SHCNE_ASSOCCHANGED)
+          UI -> UI : dirty_=false；清空搜索\n必要时放开来源筛选 → refresh()
+          UI -> UI : 按 source + object + verb 重新选中\nloadEditor() → showList()
+          UI --> User : 显示保存成功及备份路径
+        end
+      end
+    end
+  end
+end
+
+note over Store, Files
+  .reg 包含删除单个目标分支的指令，再写入其旧快照，
+  供用户通过 regedit 手动恢复。失败恢复不是注册表事务。
+  checkCurrent() 与后续写入之间没有锁或原子性保证。
+end note
+@enduml

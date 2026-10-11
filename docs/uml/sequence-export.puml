@@ -1,0 +1,71 @@
+@startuml sequence_export
+title MixP Toolbox 0.1.2 — 手动导出及系统 regedit 恢复
+autonumber
+skinparam shadowing false
+skinparam defaultFontName "Arial Unicode MS"
+hide footbox
+
+actor "用户" as User
+boundary "主界面\nWindow / dialogProc" as UI
+control "RegistryStore\n及同文件辅助函数" as Store
+database "HKCU / HKLM\n菜单子树" as Registry
+participant "文件系统\n用户选择的 .reg" as Files
+participant "regedit.exe\n系统外部程序" as Regedit
+
+User -> UI : 选中菜单，点击导出：IDC_EXPORT
+UI -> UI : GetSaveFileNameW()\n默认 menu-backup.reg；已有文件提示覆盖
+UI --> User : 选择导出路径
+alt 用户取消
+  User -> UI : 取消文件选择
+  UI --> User : 不导出
+else 用户选择文件
+  User -> UI : 指定 filename
+  UI -> Store : exportEntry(entry, filename)
+  Store -> Store : checkCurrent(entry) → read()
+  Store -> Registry : 读取当前完整快照
+  Registry --> Store : latest.snapshot 或 Error
+  Store -> Store : 读取成功时比较\nsameTree(entry.snapshot, latest.snapshot)
+  alt 读取失败或快照不同
+    Store --> UI : 抛出 Error
+    UI --> User : 显示错误；不写导出文件
+  else 快照一致
+    Store -> Store : 生成 .reg 头、目标分支删除指令\nexportTree(entry.snapshot) 序列化值和子键
+    alt .reg 序列化失败
+      Store --> UI : 抛出 Error
+      UI --> User : 显示错误；不写导出文件
+    else 序列化成功
+      Store -> Files : writeRegFile(filename, contents, true)\nCREATE_ALWAYS；写 UTF-16LE BOM 和正文
+      Files --> Store : 文件写入结果
+      alt 打开或写入失败
+        opt 已打开文件，但未完整写入
+          Store -> Files : DeleteFileW(filename) 清理不完整文件
+        end
+        Store --> UI : 抛出 Error
+        UI --> User : 显示导出错误
+      else 导出成功
+        Store --> UI : 返回
+        UI --> User : 显示导出路径
+      end
+    end
+  end
+end
+
+opt 用户随后手动恢复一个有效的备份或导出文件
+  User -> Regedit : 在 Windows 中打开 .reg 文件
+  Regedit --> User : 系统导入确认
+  User -> Regedit : 确认导入
+  Regedit -> Files : 读取 .reg 内容
+  Files --> Regedit : 删除目标分支指令及完整快照
+  Regedit -> Registry : 在具备权限时，删除指定单个菜单分支\n再导入其快照中的值和子键
+  Registry --> Regedit : 系统导入结果
+  Regedit --> User : 显示导入结果
+  User -> UI : 点击刷新
+  ref over UI, Store, Registry : sequence-query.puml 的 refresh() 流程
+end
+
+note over UI, Regedit
+  工具内没有导入按钮或调用 regedit 的恢复逻辑。
+  后半段是用户启动系统程序的独立操作，
+  不是 exportEntry() 的后续自动调用。
+end note
+@enduml

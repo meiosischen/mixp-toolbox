@@ -1,0 +1,110 @@
+@startuml objects
+title MixP Toolbox 0.1.2 — 对象图（保存修改前的示例快照）
+top to bottom direction
+skinparam shadowing false
+skinparam defaultFontName "Arial Unicode MS"
+
+object "window : Window" as WindowObject {
+  window_ = <运行时 HWND>
+  tooltips_ = <运行时 HWND>
+  selected_ = 0
+  scope_ = AllFiles
+  sourceFilter_ = -1
+  loading_ = false
+  dirty_ = true
+  creating_ = false
+  object_ = "*"
+}
+
+object "store : mixp::RegistryStore" as StoreObject {
+  userRoot_ = HKEY_CURRENT_USER
+  machineRoot_ = HKEY_LOCAL_MACHINE
+  userPrefix_ = "Software\Classes"
+  machinePrefix_ = "Software\Classes"
+  backupDirectory_ = <用户本地应用数据目录>\MixpToolbox\backups
+}
+
+object "entryList : std::vector<Entry>" as EntriesObject {
+  size = 1
+}
+
+object "joeEntry : mixp::Entry" as EntryObject {
+  source = CurrentUser
+  object = "*"
+  verb = "Mixp.Joe"
+  label = "使用 JOE 编辑"
+  command = "D:\Tools\joe\joe.exe" -colors darkblue2 -tab 4 "%1"
+  labelType = REG_SZ
+  commandType = REG_SZ
+  enabled = true
+  extended = false
+  editable = true
+}
+
+object "menuSnapshot : mixp::Tree" as SnapshotObject {
+  name = ""
+  values.size = 1
+  children.size = 1
+}
+
+object "labelValue : mixp::Value" as LabelObject {
+  name = ""
+  type = REG_SZ
+  bytes.size = 20
+  bytes = UTF-16LE("使用 JOE 编辑" + NUL)
+}
+
+object "commandNode : mixp::Tree" as CommandTreeObject {
+  name = "command"
+  values.size = 1
+  children.size = 0
+}
+
+object "commandValue : mixp::Value" as CommandValueObject {
+  name = ""
+  type = REG_SZ
+  bytes.size = 106
+  bytes = UTF-16LE(joeEntry.command + NUL)
+}
+
+object "draft : mixp::Draft" as DraftObject {
+  source = CurrentUser
+  object = "*"
+  verb = "Mixp.Joe"
+  label = "使用 JOE 编辑"
+  command = "D:\Tools\joe\joe.exe" -colors darkblue2 -tab 8 "%1"
+  enabled = true
+  extended = false
+  expandEnvironment = false
+}
+
+WindowObject --> StoreObject : store_（引用，不拥有）
+WindowObject *-- EntriesObject : entries_（成员）
+EntriesObject *-- EntryObject : [0]（按值存储）
+EntryObject *-- SnapshotObject : snapshot（成员）
+SnapshotObject *-- LabelObject : values[0]
+SnapshotObject *-- CommandTreeObject : children[0]
+CommandTreeObject *-- CommandValueObject : values[0]
+WindowObject ..> DraftObject : IDC_SAVE 处理中的局部变量
+DraftObject ..> EntryObject : update(joeEntry, draft)
+
+note top of WindowObject
+  示例时刻：用户已将 -tab 4 改为 -tab 8 并点击保存；
+  Draft 已从控件构建，尚未调用 store_.update()。
+  为简化展示，假设 entries_ 中只有此一个菜单项。
+end note
+
+note bottom of SnapshotObject
+  snapshot() 返回的根 Tree.name 保持为空，
+  子树的 name 才记录对应子键名称。
+  当前快照没有 LegacyDisable 和 Extended 值，
+  所以 enabled=true、extended=false。
+end note
+
+note bottom of DraftObject
+  Draft 表示用户准备保存的新内容，
+  Entry.snapshot 仍保留查询时读取的旧内容。
+  图中名称、路径和数据为示例，不是实际注册表采集结果。
+  bytes 按 UTF-16LE 语义展示，而非完整十六进制字节列表。
+end note
+@enduml

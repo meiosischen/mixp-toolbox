@@ -1,0 +1,65 @@
+@startuml sequence_create
+title MixP Toolbox 0.1.2 — 新增右键菜单
+autonumber
+skinparam shadowing false
+skinparam defaultFontName "Arial Unicode MS"
+hide footbox
+
+actor "用户" as User
+boundary "主界面\nWindow / dialogProc" as UI
+control "RegistryStore\n及同文件辅助函数" as Store
+database "HKCU / HKLM\nSoftware\\Classes" as Registry
+participant "Windows Shell" as Shell
+
+User -> UI : 点击新增：IDC_NEW
+UI -> UI : discard()；允许后继续
+opt 当前为 AllScopes
+  UI -> UI : 切换到 AllFiles → refresh()
+end
+UI -> Store : objectFor(scope_, extension)
+Store --> UI : 具体目标对象
+UI -> UI : newEditor(true) → showList()\nselected_=-1，creating_=true\n生成可用 verb，参数默认为 "%1"
+UI --> User : 启用编辑区，按钮显示“添加菜单”
+note over UI, Registry : 此时只进入新增模式，没有注册表写入。
+User -> UI : 填写名称、程序、参数和选项
+UI -> Store : buildCommand(program, arguments)\n（非完整命令模式）
+Store --> UI : 带程序路径引号的完整命令
+UI -> UI : changed()：dirty_=true；modes() 更新按钮状态
+User -> UI : 点击添加菜单：IDC_SAVE
+UI -> UI : 从控件构建局部 Draft
+UI -> Store : create(draft)
+Store -> Store : validate(draft)；新增名称不能为空
+alt 输入校验失败
+  Store --> UI : 抛出 Error
+  UI --> User : dialogProc 显示错误；保留编辑内容
+else 输入有效
+  Store -> Registry : RegCreateKeyExW(目标菜单键)\n请求 KEY_READ | KEY_WRITE
+  Registry --> Store : status / disposition
+  alt 创建失败或该 verb 已存在
+    Store --> UI : 抛出 Error；已有项不执行 apply()
+    UI --> User : 显示权限或标识冲突错误
+  else REG_CREATED_NEW_KEY
+    Store -> Store : apply(key, draft, REG_SZ)
+    Store -> Registry : 写名称和 command 默认值\n设置或删除 LegacyDisable / Extended
+    Registry --> Store : 写入结果
+    alt apply() 失败
+      Store -> Store : 关闭句柄 → deleteTree(刚创建的菜单键)
+      Store -> Registry : 递归删除新菜单分支
+      Store --> UI : 抛出错误（清理失败也会报错）
+      UI --> User : 显示错误
+    else 写入成功
+      Store --> UI : create() 返回
+      UI -> Shell : SHChangeNotify(SHCNE_ASSOCCHANGED)
+      UI -> UI : dirty_=false；清空搜索\n必要时放开来源筛选 → refresh()
+      UI -> UI : 按 source + object + verb 选中新项\nloadEditor() → showList()
+      UI --> User : 显示“已新增菜单项”
+    end
+  end
+end
+
+note over Store, Registry
+  command 根据 expandEnvironment 写为 REG_SZ 或 REG_EXPAND_SZ。
+  enabled=false 时添加 LegacyDisable；extended=true 时添加 Extended。
+  新增没有旧项，因此不创建自动备份。
+end note
+@enduml

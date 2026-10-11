@@ -1,0 +1,96 @@
+@startuml sequence_query
+title MixP Toolbox 0.1.2 — 启动、查询、搜索与选择
+autonumber
+skinparam shadowing false
+skinparam defaultFontName "Arial Unicode MS"
+hide footbox
+
+actor "用户" as User
+control "WinMain / runMainWindow" as App
+boundary "主界面\nWindow / dialogProc" as UI
+control "RegistryStore\n及同文件辅助函数" as Store
+database "HKCU / HKLM\nSoftware\\Classes" as Registry
+
+User -> App : 启动 EXE
+App -> Store : RegistryStore()
+note right of Store
+  生产构造器使用 HKCU、HKLM 和 Software\Classes；
+  备份目录通过 SHGetFolderPathW / APPDATA 解析。
+end note
+App -> UI : runMainWindow()：构造 Window(store)
+App -> UI : CreateDialogParamW(IDD_MAIN)
+UI -> UI : dialogProc(WM_INITDIALOG)\n保存 Window 指针 → initialize(dialog)
+UI -> UI : 初始化标签、组合框、列表\nscope_=AllScopes，sourceFilter_=-1
+
+group 首次 initialize() 调用 refresh()
+  UI -> UI : refresh()
+  alt 全部范围：AllScopes
+    UI -> Store : listAll(sourceFilter_)
+    loop 每个被选中的来源（当前用户 / 所有用户）
+      Store -> Registry : RegOpenKeyExW / RegEnumKeyExW\n枚举 Software\Classes 顶层对象
+      Registry --> Store : object 名称
+      loop 每个 object
+        Store -> Store : list(object, source)
+        Store -> Registry : 打开 object\shell，枚举 verb
+        Registry --> Store : 菜单标识列表；不存在的分支跳过
+        loop 每个 verb
+          Store -> Store : read(source, object, verb)
+          Store -> Registry : 递归 snapshot()：读取全部值和子树
+          Registry --> Store : Tree / Value 快照
+          Store -> Store : 解析 Entry 的名称、命令、状态与 editable
+        end
+      end
+    end
+    Store -> Store : 按 object / verb / source 排序
+    Store --> UI : vector<Entry>
+  else 指定范围（后续刷新时也使用此分支）
+    UI -> Store : objectFor(scope_, extension)
+    opt scope_ == Extension
+      Store -> Registry : 优先 HKCU，再 HKLM\n读取扩展名默认值对应的 ProgID
+      Registry --> Store : 已有关联的 ProgID；没有关联则抛 Error
+    end
+    Store --> UI : "*" / Directory / Drive / AllFilesystemObjects / ProgID
+    UI -> Store : list(object, sourceFilter_)
+    loop 每个被选中的来源及其 shell 菜单项
+      Store -> Registry : 枚举 verb，递归读取该项快照
+      Registry --> Store : 菜单子树
+      Store -> Store : read() 构建 Entry
+    end
+    Store --> UI : 已排序的 vector<Entry>
+  end
+  UI -> UI : object_=目标对象（全部范围为空）\nentries_.swap(items)
+  UI -> UI : newEditor() → showList()\n取消选择、清空编辑区、显示查询结果
+end
+
+App -> UI : prepareLayout()\n记住布局、建立工具提示、适配屏幕
+App -> UI : ShowWindow() / UpdateWindow()
+App -> App : GetMessageW / IsDialogMessageW / DispatchMessageW 消息循环
+
+group 用户点击刷新
+  User -> UI : WM_COMMAND(IDC_REFRESH)
+  UI -> UI : discard() 检查未保存编辑
+  alt 用户允许刷新，或没有未保存编辑
+    ref over UI, Store, Registry : 复用上方 refresh() 查询流程
+  else 用户选择保留未保存内容
+    UI --> User : 保持当前编辑和列表
+  end
+end
+
+group 搜索与选择
+  User -> UI : 搜索输入变化：EN_CHANGE(IDC_SEARCH)
+  UI -> UI : showList() / containsInsensitive()\n按名称、标识、命令和对象筛选 entries_
+  note right of UI : 搜索在内存中完成，不重新查询注册表。
+  User -> UI : 选择行：LVN_ITEMCHANGED
+  UI -> UI : 从 ListView 行 lParam 获取 entries_ 索引\ndiscard() 允许后 loadEditor(index)
+  UI -> Store : splitCommand(entry.command)
+  Store --> UI : 程序和参数，或使用完整命令模式
+  UI -> Store : location(entry)
+  Store --> UI : 完整注册表位置字符串
+  UI --> User : 显示编辑内容；复杂处理程序项禁止普通命令编辑
+end
+
+note over UI, Registry
+  查询失败时由 dialogProc 捕获 Error 并显示 MessageBoxW。
+  图中首次查询展示默认的 AllScopes 分支；其他范围用于后续查询。
+end note
+@enduml

@@ -116,5 +116,8 @@ test.bat
 | `build.bat` / `build.mak` | Release/Debug 构建 |
 | `tests/` / `test.bat` | 隔离注册表测试和 GUI 验证 |
 | `docs/verification.md` | 验证结果及 XP 验收步骤 |
+| `docs/uml/` | PlantUML 组件图、顺序图和对象图 |
+
+项目 UML 图及渲染说明见 [docs/uml/README.md](docs/uml/README.md)。图中模块和调用流程对应当前 Win32 实现；对象图采用明确标注的 JOE 菜单示例数据。
 
 实现依据：[静态命令和菜单方法的系统支持](https://learn.microsoft.com/en-us/windows/win32/shell/shortcut-choose-method)、[菜单命令与参数引用](https://learn.microsoft.com/en-us/windows/win32/shell/fa-verbs)、[HKCR 合并视图](https://learn.microsoft.com/en-us/windows/win32/sysinfo/merged-view-of-hkey-classes-root)。

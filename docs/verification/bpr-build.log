@@ -1,0 +1,9 @@
+Loading project file
+Loading template
+Generating Makefile
+.........................................MAKE Version 5.2  Copyright (c) 1987, 2000 Borland
+	Z:\tmp\MIXP~HQF\bcb6\BIN\bcc32 -O2 -H- -Vx -Ve -X- -a8 -b -c -tWM -tW -w-par -I.;src;Z:\tmp\MIXP~HQF\bcb6\include -D;_NO_VCL;WIN32;UNICODE;_UNICODE;WINVER=0x0501;_WIN32_WINNT=0x0501;_WIN32_IE=0x0501 -n.\ src\MenuRegistry.cpp 
+Borland C++ 5.6 for Win32 Copyright (c) 1993, 2002 Borland
+src\MenuRegistry.cpp:
+	Z:\tmp\MIXP~HQF\bcb6\BIN\ilink32 @MAKE0000.@@@
+Turbo Incremental Link 5.60 Copyright (c) 1997-2002 Borland

@@ -1,0 +1,24 @@
+MAKE Version 5.2  Copyright (c) 1987, 2000 Borland
+MAKE Version 5.2  Copyright (c) 1987, 2000 Borland
+	"Z:\tmp\MIXP~HQF\bcb6\Bin\bcc32.exe" -c -tW -tWM -a8 -H- -Vx -Ve -O2 -w-par -D_NO_VCL;WIN32;UNICODE;_UNICODE;WINVER=0x0501;_WIN32_WINNT=0x0501;_WIN32_IE=0x0501 -I"Z:\tmp\MIXP~HQF\bcb6\Include" -I"src" -obuild\Release\GuiTests.obj tests\GuiTests.cpp
+Borland C++ 5.6 for Win32 Copyright (c) 1993, 2002 Borland
+tests\GuiTests.cpp:
+	"Z:\tmp\MIXP~HQF\bcb6\Bin\ilink32.exe" -Tpe -ap -x -Gn -v- -L"Z:\tmp\MIXP~HQF\bcb6\Lib" -L"Z:\tmp\MIXP~HQF\bcb6\Lib\Psdk" -L"Z:\tmp\MIXP~HQF\bcb6\Lib\Obj" c0x32.obj build\Release\GuiTests.obj build\Release\MenuRegistry.obj,build\Release\gui-tests.exe,,import32.lib cw32mt.lib,,
+Turbo Incremental Link 5.60 Copyright (c) 1997-2002 Borland
+PASS: five scopes and extension resolution without association changes
+PASS: Unicode create/read, duplicate rejection and HKCU/HKLM separation
+PASS: update with automatic backup; real regedit restores all metadata and flags
+PASS: recursive delete/export/import round trip with Unicode, binary and REG_MULTI_SZ
+PASS: external registry changes block stale writes and deletes
+PASS: unwritable backup location prevents mutation
+PASS: DDE/handler/missing-command entries stay read-only
+PASS: input validation, quoting, raw-command fallback and case-insensitive search
+RESULT: 8 groups passed; all writes isolated under Software\MixpToolboxTests.
+PASS: native Unicode GUI starts with Chinese labels
+PASS: GUI creates a menu with Chinese path and default arguments
+PASS: GUI modifies the display name without rewriting arguments
+PASS: GUI live search filters the saved list
+PASS: GUI saves enable/Shift flags; captures the actual window
+PASS: GUI source selection and confirmed deletion preserve the other source
+RESULT: 6 GUI groups passed; application writes isolated under Software\MixpToolboxTests.
+PASS: shipped Release executable starts and closes; no menu changes made.

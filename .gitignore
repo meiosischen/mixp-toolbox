@@ -1,0 +1,33 @@
+# Build and portable package outputs
+build/
+dist/
+
+# Compiled binaries and intermediate files
+*.exe
+*.dll
+*.lib
+*.bpl
+*.bpi
+*.obj
+*.o
+*.a
+*.res
+*.tds
+*.map
+*.pdb
+*.idb
+*.ilk
+*.exp
+*.pch
+*.ilc
+*.ild
+*.ilf
+*.ils
+*.csm
+*.dsk
+*.local
+*.@@@
+
+# IDE state and temporary files
+*.~*
+.DS_Store

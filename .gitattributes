@@ -1,0 +1,11 @@
+* text=auto
+
+# Preserve Windows line endings for BCB6 project files and scripts.
+*.bat text eol=crlf
+*.bpr text eol=crlf
+*.bpg text eol=crlf
+*.rc text eol=crlf
+*.mak text eol=crlf
+
+# Keep captured verification output verbatim.
+docs/verification/*.log whitespace=-blank-at-eol

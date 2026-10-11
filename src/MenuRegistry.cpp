@@ -256,6 +256,8 @@ std::wstring backupDirectory() {
 }
 
 bool lowerEntry(const Entry &a, const Entry &b) {
+    int object = lstrcmpiW(a.object.c_str(), b.object.c_str());
+    if (object) return object < 0;
     int name = lstrcmpiW(a.verb.c_str(), b.verb.c_str());
     return name ? name < 0 : a.source < b.source;
 }
@@ -343,6 +345,29 @@ std::vector<Entry> RegistryStore::list(const std::wstring &object, int sourceFil
             check(status, L"\x65e0\x6cd5\x5217\x51fa\x83dc\x5355\x9879\x3002");
             try { result.push_back(read((Source)source, object, std::wstring(name, length))); }
             catch (const Error &failure) { if (!missing(failure.code)) throw; }
+        }
+    }
+    std::sort(result.begin(), result.end(), lowerEntry);
+    return result;
+}
+
+std::vector<Entry> RegistryStore::listAll(int sourceFilter) const {
+    std::vector<Entry> result;
+    for (int source = CurrentUser; source <= AllUsers; ++source) {
+        if (sourceFilter >= 0 && sourceFilter != source) continue;
+        Key classes;
+        LONG status = RegOpenKeyExW(root((Source)source), prefix((Source)source).c_str(),
+                                    0, KEY_READ, &classes.handle);
+        if (missing(status)) continue;
+        check(status, L"\x65e0\x6cd5\x8bfb\x53d6\x83dc\x5355\x7c7b\x578b\x5217\x8868\x3002");
+        wchar_t name[256];
+        for (DWORD i = 0;; ++i) {
+            DWORD length = 256;
+            status = RegEnumKeyExW(classes.handle, i, name, &length, NULL, NULL, NULL, NULL);
+            if (status == ERROR_NO_MORE_ITEMS) break;
+            check(status, L"\x65e0\x6cd5\x5217\x51fa\x83dc\x5355\x7c7b\x578b\x3002");
+            std::vector<Entry> items = list(std::wstring(name, length), source);
+            result.insert(result.end(), items.begin(), items.end());
         }
     }
     std::sort(result.begin(), result.end(), lowerEntry);

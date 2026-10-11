@@ -13,7 +13,7 @@ struct Error {
     Error(const std::wstring &text, DWORD status = 0);
 };
 
-enum Scope { AllFiles, Directories, Drives, FileSystemObjects, Extension };
+enum Scope { AllFiles, Directories, Drives, FileSystemObjects, Extension, AllScopes };
 enum Source { CurrentUser, AllUsers };
 
 struct Value {
@@ -63,6 +63,7 @@ public:
                   const std::wstring &backupDirectory);
     std::wstring objectFor(Scope scope, const std::wstring &extension) const;
     std::vector<Entry> list(const std::wstring &object, int sourceFilter) const;
+    std::vector<Entry> listAll(int sourceFilter) const;
     Entry read(Source source, const std::wstring &object, const std::wstring &verb) const;
     void create(const Draft &draft);
     std::wstring update(const Entry &original, const Draft &draft);

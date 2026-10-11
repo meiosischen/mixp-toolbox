@@ -18,7 +18,7 @@ class Window {
     RegistryStore &store_;
     std::vector<Entry> entries_;
     int selected_, scope_, sourceFilter_;
-    bool loading_, dirty_;
+    bool loading_, dirty_, creating_;
     std::wstring object_;
 
     HWND control(int id) { return GetDlgItem(window_, id); }
@@ -45,10 +45,10 @@ class Window {
             MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES;
     }
     void modes() {
-        bool editable = selected_ < 0 || entries_[selected_].editable;
+        bool editable = creating_ || (selected_ >= 0 && entries_[selected_].editable);
         bool raw = checked(IDC_RAW);
-        enabled(IDC_VERB, selected_ < 0);
-        enabled(IDC_SOURCE, selected_ < 0);
+        enabled(IDC_VERB, creating_);
+        enabled(IDC_SOURCE, creating_);
         enabled(IDC_LABEL, editable);
         enabled(IDC_PROGRAM, editable && !raw);
         enabled(IDC_ARGUMENTS, editable && !raw);
@@ -73,22 +73,36 @@ class Window {
         }
         modes();
     }
-    void newEditor() {
+    void newEditor(bool creating = false) {
         loading_ = true;
         selected_ = -1;
-        text(IDC_VERB, L"MixpOpen"); text(IDC_LABEL, L""); text(IDC_PROGRAM, L"");
-        text(IDC_ARGUMENTS, L"\"%1\"");
+        creating_ = creating;
+        std::wstring verb = L"MixpOpen";
+        for (unsigned suffix = 2;; ++suffix) {
+            bool exists = false;
+            for (size_t i = 0; i < entries_.size(); ++i)
+                if (entries_[i].object == object_ && !lstrcmpiW(entries_[i].verb.c_str(), verb.c_str())) exists = true;
+            if (!exists) break;
+            std::wostringstream next; next << L"MixpOpen" << suffix; verb = next.str();
+        }
+        if (!creating) verb.clear();
+        text(IDC_VERB, verb); text(IDC_LABEL, L""); text(IDC_PROGRAM, L"");
+        text(IDC_ARGUMENTS, creating ? L"\"%1\"" : L"");
         text(IDC_COMMAND, L"");
         combo(IDC_SOURCE, sourceFilter_ == AllUsers ? AllUsers : CurrentUser);
         checkBox(IDC_ENABLED, true); checkBox(IDC_EXTENDED, false);
         checkBox(IDC_ENVIRONMENT, false); checkBox(IDC_RAW, false);
-        text(IDC_LOCATION, L"\x65b0\x589e\x83dc\x5355\x9879\xff1a\x586b\x5199\x83dc\x5355\x540d\x79f0\x3001\x7a0b\x5e8f\x8def\x5f84\x548c\x53c2\x6570\xff0c\x518d\x70b9\x201c\x4fdd\x5b58\x201d\x3002");
+        text(IDC_SAVE, creating ? L"\x6dfb\x52a0\x83dc\x5355" : L"\x4fdd\x5b58");
+        text(IDC_LOCATION, creating ? L"\x65b0\x589e\x6a21\x5f0f\xff1a\x586b\x5199\x83dc\x5355\x540d\x79f0\x3001\x7a0b\x5e8f\x8def\x5f84\x548c\x53c2\x6570\xff0c\x518d\x70b9\x201c\x6dfb\x52a0\x83dc\x5355\x201d\x3002" :
+            L"\x9009\x4e2d\x8868\x683c\x4e2d\x7684\x83dc\x5355\x8fdb\x884c\x7f16\x8f91\xff0c\x6216\x70b9\x51fb\x201c\x65b0\x589e\x201d\x6dfb\x52a0\x83dc\x5355\x3002");
         dirty_ = false; loading_ = false;
         modes();
     }
     void loadEditor(int index) {
         loading_ = true;
         selected_ = index;
+        creating_ = false;
+        text(IDC_SAVE, L"\x4fdd\x5b58");
         const Entry &e = entries_[index];
         text(IDC_VERB, e.verb); text(IDC_LABEL, e.label);
         combo(IDC_SOURCE, e.source);
@@ -127,7 +141,7 @@ class Window {
         for (size_t i = 0; i < entries_.size(); ++i) {
             const Entry &e = entries_[i];
             if (!containsInsensitive(e.label, query) && !containsInsensitive(e.verb, query) &&
-                !containsInsensitive(e.command, query)) continue;
+                !containsInsensitive(e.command, query) && !containsInsensitive(e.object, query)) continue;
             LVITEMW item; ZeroMemory(&item, sizeof(item));
             item.mask = LVIF_TEXT | LVIF_PARAM;
             item.iItem = row; item.lParam = (LPARAM)i;
@@ -135,27 +149,37 @@ class Window {
             item.pszText = (LPWSTR)label.c_str();
             SendMessageW(list, LVM_INSERTITEMW, 0, (LPARAM)&item);
             cell(row, 1, e.verb);
-            cell(row, 2, e.source == CurrentUser ? L"\x5f53\x524d\x7528\x6237" : L"\x6240\x6709\x7528\x6237");
-            cell(row, 3, !e.enabled ? L"\x7981\x7528" : (e.extended ? L"Shift \x663e\x793a" : L"\x542f\x7528"));
-            cell(row, 4, e.command);
+            cell(row, 2, e.object);
+            cell(row, 3, e.source == CurrentUser ? L"\x5f53\x524d\x7528\x6237" : L"\x6240\x6709\x7528\x6237");
+            cell(row, 4, !e.enabled ? L"\x7981\x7528" : (e.extended ? L"Shift \x663e\x793a" : L"\x542f\x7528"));
+            cell(row, 5, e.command);
             if ((int)i == selected_) ListView_SetItemState(list, row, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
             ++row;
         }
         SendMessageW(list, WM_SETREDRAW, TRUE, 0); InvalidateRect(list, NULL, TRUE);
+        text(IDC_EMPTY, entries_.empty() ?
+            L"\x6b64\x8303\x56f4\x6682\x65e0\x9759\x6001\x83dc\x5355\x3002\r\n\x53ef\x5207\x6362\x8303\x56f4\x67e5\x770b\xff0c\x6216\x70b9\x201c\x65b0\x589e\x201d\x6dfb\x52a0\x3002" :
+            L"\x6ca1\x6709\x5339\x914d\x7684\x83dc\x5355\x3002\r\n\x8bf7\x6e05\x7a7a\x641c\x7d22\x6761\x4ef6\x540e\x67e5\x770b\x3002");
+        ShowWindow(control(IDC_EMPTY), row ? SW_HIDE : SW_SHOWNOACTIVATE);
         loading_ = wasLoading;
         std::wostringstream count;
-        count << L"\x663e\x793a " << row << L" / " << entries_.size() << L" \x9879\xff1b\x540c\x540d\x9879\x6309\x6ce8\x518c\x8868\x6765\x6e90\x5206\x522b\x5217\x51fa\x3002";
+        count << L"\x663e\x793a " << row << L" / " << entries_.size() << L" \x9879\xff1b\x9009\x4e2d\x9879\x53ef\x7f16\x8f91\xff0c\x70b9\x201c\x65b0\x589e\x201d\x6dfb\x52a0\x83dc\x5355\x3002";
         text(IDC_STATUS, count.str());
     }
     void refresh() {
-        std::wstring object = store_.objectFor((Scope)scope_, text(IDC_EXTENSION));
-        std::vector<Entry> items = store_.list(object, sourceFilter_);
+        std::wstring object;
+        std::vector<Entry> items;
+        if (scope_ == AllScopes) items = store_.listAll(sourceFilter_);
+        else {
+            object = store_.objectFor((Scope)scope_, text(IDC_EXTENSION));
+            items = store_.list(object, sourceFilter_);
+        }
         object_ = object; entries_.swap(items);
         newEditor(); showList();
     }
     void labels() {
-        SetWindowTextW(window_, L"MixP Toolbox - \x53f3\x952e\x83dc\x5355\x7ba1\x7406");
-        text(IDC_HEADER, L"MixP Toolbox  /  \x53f3\x952e\x83dc\x5355\x7ba1\x7406");
+        SetWindowTextW(window_, L"MixP Toolbox 0.1.1 - \x53f3\x952e\x83dc\x5355\x7ba1\x7406");
+        text(IDC_HEADER, L"MixP Toolbox 0.1.1  /  \x53f3\x952e\x83dc\x5355\x7ba1\x7406");
         text(IDC_LABEL_SCOPE, L"\x4f5c\x7528\x8303\x56f4"); text(IDC_LABEL_EXT, L"\x6269\x5c55\x540d");
         text(IDC_LABEL_VIEW, L"\x67e5\x770b\x6765\x6e90"); text(IDC_LABEL_SEARCH, L"\x641c\x7d22");
         text(IDC_REFRESH, L"\x5237\x65b0"); text(IDC_NEW, L"\x65b0\x589e"); text(IDC_DELETE, L"\x5220\x9664");
@@ -180,13 +204,14 @@ class Window {
     }
 public:
     explicit Window(RegistryStore &store) : window_(NULL), store_(store), selected_(-1),
-        scope_(AllFiles), sourceFilter_(-1), loading_(true), dirty_(false) {}
+        scope_(AllScopes), sourceFilter_(-1), loading_(true), dirty_(false), creating_(false) {}
     void initialize(HWND window) {
         window_ = window;
         labels();
         addCombo(IDC_SCOPE, L"\x6240\x6709\x6587\x4ef6"); addCombo(IDC_SCOPE, L"\x6587\x4ef6\x5939");
         addCombo(IDC_SCOPE, L"\x9a71\x52a8\x5668");
-        addCombo(IDC_SCOPE, L"\x6587\x4ef6\x548c\x6587\x4ef6\x5939"); addCombo(IDC_SCOPE, L"\x6307\x5b9a\x6269\x5c55\x540d"); combo(IDC_SCOPE, 0);
+        addCombo(IDC_SCOPE, L"\x6587\x4ef6\x548c\x6587\x4ef6\x5939"); addCombo(IDC_SCOPE, L"\x6307\x5b9a\x6269\x5c55\x540d");
+        addCombo(IDC_SCOPE, L"\x5168\x90e8\x8303\x56f4"); combo(IDC_SCOPE, AllScopes);
         addCombo(IDC_VIEW_SOURCE, L"\x5168\x90e8\xff08\x5206\x6765\x6e90\xff09"); addCombo(IDC_VIEW_SOURCE, L"\x5f53\x524d\x7528\x6237");
         addCombo(IDC_VIEW_SOURCE, L"\x6240\x6709\x7528\x6237"); combo(IDC_VIEW_SOURCE, 0);
         addCombo(IDC_SOURCE, L"\x5f53\x524d\x7528\x6237 (HKCU)"); addCombo(IDC_SOURCE, L"\x6240\x6709\x7528\x6237 (HKLM)");
@@ -197,8 +222,9 @@ public:
         SendMessageW(control(IDC_ARGUMENTS), EM_SETLIMITTEXT, 32767, 0);
         ListView_SetExtendedListViewStyle(control(IDC_LIST), LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
         SendMessageW(control(IDC_LIST), LVM_SETUNICODEFORMAT, TRUE, 0);
-        column(0, L"\x83dc\x5355\x540d\x79f0", 160); column(1, L"\x5185\x90e8\x6807\x8bc6", 130);
-        column(2, L"\x6765\x6e90", 95); column(3, L"\x72b6\x6001", 90); column(4, L"\x542f\x52a8\x547d\x4ee4", 420);
+        column(0, L"\x83dc\x5355\x540d\x79f0", 160); column(1, L"\x5185\x90e8\x6807\x8bc6", 120);
+        column(2, L"\x4f5c\x7528\x7c7b\x578b", 130); column(3, L"\x6765\x6e90", 90);
+        column(4, L"\x72b6\x6001", 80); column(5, L"\x542f\x52a8\x547d\x4ee4", 350);
         loading_ = false;
         refresh();
         HICON icon = LoadIcon(NULL, IDI_APPLICATION);
@@ -270,9 +296,14 @@ INT_PTR Window::message(UINT message, WPARAM wparam, LPARAM lparam) {
         break;
     case IDC_NEW:
         if (discard()) {
+            // New items need one concrete target; an overview defaults to all files.
+            if (scope_ == AllScopes) {
+                scope_ = AllFiles; combo(IDC_SCOPE, scope_); refresh();
+            }
             // Validate the type before offering an editor for a new menu item.
             object_ = store_.objectFor((Scope)scope_, text(IDC_EXTENSION));
-            newEditor(); showList(); SetFocus(control(IDC_LABEL));
+            newEditor(true); showList(); SetFocus(control(IDC_LABEL));
+            text(IDC_STATUS, L"\x5df2\x8fdb\x5165\x65b0\x589e\x6a21\x5f0f\xff0c\x8bf7\x586b\x5199\x4e0b\x65b9\x7684\x83dc\x5355\x540d\x79f0\x548c\x7a0b\x5e8f\x8def\x5f84\x3002");
         }
         break;
     case IDC_BROWSE: browse(); break;
@@ -303,9 +334,17 @@ INT_PTR Window::message(UINT message, WPARAM wparam, LPARAM lparam) {
         else store_.create(draft);
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, NULL, NULL);
         dirty_ = false;
+        // A successful save must be visible even when the old filter excluded it.
+        loading_ = true;
+        text(IDC_SEARCH, L"");
+        if (sourceFilter_ >= 0 && sourceFilter_ != draft.source) {
+            sourceFilter_ = -1; combo(IDC_VIEW_SOURCE, 0);
+        }
+        loading_ = false;
         refresh();
         for (size_t i = 0; i < entries_.size(); ++i)
-            if (entries_[i].source == draft.source && !lstrcmpiW(entries_[i].verb.c_str(), draft.verb.c_str())) {
+            if (entries_[i].source == draft.source && entries_[i].object == draft.object &&
+                !lstrcmpiW(entries_[i].verb.c_str(), draft.verb.c_str())) {
                 loadEditor((int)i); showList(); break;
             }
         if (saved.empty()) text(IDC_STATUS, L"\x5df2\x65b0\x589e\x83dc\x5355\x9879\x3002\x8bf7\x5728\x8d44\x6e90\x7ba1\x7406\x5668\x4e2d\x91cd\x65b0\x6253\x5f00\x53f3\x952e\x83dc\x5355\x67e5\x770b\x3002");

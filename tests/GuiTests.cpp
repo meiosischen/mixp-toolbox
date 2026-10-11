@@ -49,6 +49,33 @@ static void combo(HWND window, int id, int index) {
     SendMessageW(control(window, id), CB_SETCURSEL, index, 0);
     SendMessageW(window, WM_COMMAND, MAKEWPARAM(id, CBN_SELCHANGE), (LPARAM)control(window, id));
 }
+static void waitRows(HWND window, int expected) {
+    for (unsigned i = 0; i < 100; ++i) {
+        if (SendMessageW(control(window, IDC_LIST), LVM_GETITEMCOUNT, 0, 0) == expected) return;
+        Sleep(100);
+    }
+    throw Error(L"Timed out waiting for refreshed table rows.");
+}
+static void waitEditor(HWND window, bool creating) {
+    for (unsigned i = 0; i < 100; ++i) {
+        if ((IsWindowEnabled(control(window, IDC_VERB)) != FALSE) == creating &&
+            (IsWindowEnabled(control(window, IDC_LABEL)) != FALSE)) return;
+        Sleep(100);
+    }
+    throw Error(L"Timed out waiting for editor mode.");
+}
+static void waitLabel(HWND window, const std::wstring &label) {
+    for (unsigned i = 0; i < 100; ++i) {
+        if (text(window, IDC_LABEL) == label) return;
+        Sleep(100);
+    }
+    throw Error(L"Timed out waiting for the selected menu editor.");
+}
+static void capture(HWND window, const wchar_t *filename) {
+    require(SendMessageW(window, WM_APP + 101, 0, 0) != FALSE, "capture actual GUI state");
+    require(MoveFileExW(L"build\\Release\\gui-test.bmp", filename, MOVEFILE_REPLACE_EXISTING) != FALSE,
+            "preserve captured GUI state");
+}
 static Entry waitEntry(RegistryStore &store, Source source, const wchar_t *object,
                        const wchar_t *verb, const std::wstring &label) {
     for (unsigned i = 0; i < 100; ++i) {
@@ -103,6 +130,34 @@ int main(int argc, char **argv) {
         require(text(window, IDC_SAVE) == L"\x4fdd\x5b58", "Chinese button caption");
         pass("native Unicode GUI starts with Chinese labels");
 
+        waitRows(window, 0);
+        require(IsWindowVisible(control(window, IDC_EMPTY)) && !IsWindowEnabled(control(window, IDC_LABEL)),
+                "empty table explains the next action and editor awaits New");
+        click(window, IDC_REFRESH); Sleep(200);
+        require(IsWindowVisible(control(window, IDC_EMPTY)), "refresh preserves an explicit empty-state message");
+        capture(window, L"build\\Release\\gui-empty.bmp");
+        Draft fixture; fixture.source = AllUsers; fixture.object = L"Directory"; fixture.verb = L"SameVerb";
+        fixture.label = L"Folder fixture"; fixture.command = L"notepad.exe \"%1\""; store.create(fixture);
+        fixture.source = CurrentUser; fixture.object = L"Mixp.GuiType"; fixture.label = L"Type fixture"; store.create(fixture);
+        click(window, IDC_REFRESH); waitRows(window, 2);
+        require(!IsWindowVisible(control(window, IDC_EMPTY)) && store.list(L"*", -1).empty(),
+                "refresh overview finds folders and ProgIDs when all-files has no entries");
+        capture(window, L"build\\Release\\gui-overview.bmp");
+        RegistryStore::deleteTree(HKEY_CURRENT_USER, base + L"\\Machine\\Classes\\Directory");
+        RegistryStore::deleteTree(HKEY_CURRENT_USER, base + L"\\User\\Classes\\Mixp.GuiType");
+        click(window, IDC_REFRESH); waitRows(window, 0);
+        pass("GUI refresh has explicit empty feedback and discovers static menus across types");
+
+        click(window, IDC_NEW); waitEditor(window, true);
+        require(SendMessageW(control(window, IDC_SCOPE), CB_GETCURSEL, 0, 0) == AllFiles &&
+            text(window, IDC_SAVE) == L"\x6dfb\x52a0\x83dc\x5355" &&
+            text(window, IDC_LOCATION).find(L"\x65b0\x589e\x6a21\x5f0f") != std::wstring::npos &&
+            text(window, IDC_ARGUMENTS) == L"\"%1\"", "New activates an explicit editor and concrete target");
+        require(!IsWindowEnabled(control(window, IDC_SAVE)) && store.listAll(-1).empty(),
+                "New does not write an incomplete registry item");
+        capture(window, L"build\\Release\\gui-new.bmp");
+        pass("first New click enables editor and displays Add Menu feedback");
+
         std::wstring label = L"\x7528 JOE \x7f16\x8f91", program = L"C:\\Program Files\\\x7f16\x8f91\x5668\\joe.exe";
         std::wstring args = L"-colors darkblue2 -tab 4 \"%1\"";
         text(window, IDC_VERB, L"GuiOpen"); text(window, IDC_LABEL, label);
@@ -114,7 +169,8 @@ int main(int argc, char **argv) {
         pass("GUI creates a menu with Chinese path and default arguments");
 
         // Wait for refresh/selection after save before changing the editor again.
-        for (unsigned i = 0; i < 100 && IsWindowEnabled(control(window, IDC_VERB)); ++i) Sleep(100);
+        waitEditor(window, false);
+        waitRows(window, 1);
         text(window, IDC_LABEL, L"\x66f4\x65b0\x540d\x79f0"); click(window, IDC_SAVE);
         Entry updated = waitEntry(store, CurrentUser, L"*", L"GuiOpen", L"\x66f4\x65b0\x540d\x79f0");
         require(updated.command == original.command, "label-only edit preserves command bytes");
@@ -128,6 +184,25 @@ int main(int argc, char **argv) {
         text(window, IDC_SEARCH, L"");
         pass("GUI live search filters the saved list");
 
+        fixture.source = CurrentUser; fixture.object = L"Directory"; fixture.verb = L"GuiOpen";
+        fixture.label = L"Directory same ID"; store.create(fixture);
+        combo(window, IDC_SCOPE, AllScopes); waitRows(window, 2);
+        text(window, IDC_SEARCH, L"Directory"); waitRows(window, 1);
+        SendMessageW(control(window, IDC_LIST), WM_KEYDOWN, VK_HOME, 1);
+        waitLabel(window, fixture.label);
+        text(window, IDC_LABEL, L"Directory updated"); click(window, IDC_SAVE);
+        waitEntry(store, CurrentUser, L"Directory", L"GuiOpen", L"Directory updated");
+        waitEditor(window, false); waitRows(window, 2);
+        require(text(window, IDC_LOCATION).find(L"\\Directory\\") != std::wstring::npos &&
+            text(window, IDC_LABEL) == L"Directory updated" &&
+            store.read(CurrentUser, L"*", L"GuiOpen").label == L"\x66f4\x65b0\x540d\x79f0",
+            "overview save retains the exact object when IDs match across types");
+        RegistryStore::deleteTree(HKEY_CURRENT_USER, base + L"\\User\\Classes\\Directory");
+        combo(window, IDC_SCOPE, AllFiles); waitRows(window, 1);
+        SendMessageW(control(window, IDC_LIST), WM_KEYDOWN, VK_HOME, 1);
+        waitLabel(window, L"\x66f4\x65b0\x540d\x79f0");
+        pass("overview searches types and edits the correct target with duplicate menu IDs");
+
         click(window, IDC_ENABLED); Sleep(100); click(window, IDC_EXTENDED); Sleep(100); click(window, IDC_SAVE);
         for (unsigned i = 0; i < 100; ++i) {
             updated = store.read(CurrentUser, L"*", L"GuiOpen");
@@ -138,12 +213,17 @@ int main(int argc, char **argv) {
         Sleep(300); require(SendMessageW(window, WM_APP + 101, 0, 0) != FALSE, "in-process test-window capture");
         pass("GUI saves enable/Shift flags; captures the actual window");
 
-        click(window, IDC_NEW); Sleep(200);
+        combo(window, IDC_VIEW_SOURCE, 1); Sleep(200);
+        click(window, IDC_NEW); waitEditor(window, true);
+        text(window, IDC_SEARCH, L"nothing matches");
         combo(window, IDC_SOURCE, AllUsers);
         text(window, IDC_VERB, L"GuiMachine"); text(window, IDC_LABEL, L"Machine example");
         text(window, IDC_PROGRAM, L"C:\\Windows\\notepad.exe"); click(window, IDC_SAVE);
         updated = waitEntry(store, AllUsers, L"*", L"GuiMachine", L"Machine example");
         require(store.list(L"*", -1).size() == 2, "both sources shown independently");
+        waitEditor(window, false); waitRows(window, 2);
+        require(text(window, IDC_SEARCH).empty() && SendMessageW(control(window, IDC_VIEW_SOURCE), CB_GETCURSEL, 0, 0) == 0,
+                "successful create clears search and adjusts an excluding source filter");
         Sleep(300); click(window, IDC_DELETE);
         HWND confirmation = waitWindow(true); PostMessageW(control(confirmation, IDYES), BM_CLICK, 0, 0);
         bool removed = false;

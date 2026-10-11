@@ -69,6 +69,7 @@ int main() {
     RegistryStore store(HKEY_CURRENT_USER, user, HKEY_LOCAL_MACHINE, machine, backups);
     int result = 1;
     try {
+        require(store.listAll(-1).empty(), "empty Classes roots return an empty overview");
         require(store.objectFor(AllFiles, L"") == L"*" && store.objectFor(Directories, L"") == L"Directory" &&
             store.objectFor(Drives, L"") == L"Drive" && store.objectFor(FileSystemObjects, L"") == L"AllFilesystemObjects", "scope mappings");
         stringAt(HKEY_LOCAL_MACHINE, machine + L"\\.mixptest", L"", L"Mixp.MachineType");
@@ -88,6 +89,18 @@ int main() {
         rejected = false; try { store.create(d); } catch (const Error &) { rejected = true; }
         require(rejected && sameTree(original.snapshot, store.read(CurrentUser, L"*", L"MixpOpen").snapshot), "duplicate never overwrites");
         pass("Unicode create/read, duplicate rejection and HKCU/HKLM separation");
+
+        Draft folder = draft(AllUsers, L"OpenFolder"); folder.object = L"Folder"; store.create(folder);
+        Draft type = draft(CurrentUser, L"OpenType"); type.object = L"Mixp.UserType"; store.create(type);
+        stringAt(HKEY_CURRENT_USER, user + L"\\CLSID\\Example\\shellex\\ContextMenuHandlers", L"", L"handler");
+        std::vector<Entry> overview = store.listAll(-1);
+        require(overview.size() == 4 && store.listAll(CurrentUser).size() == 2 &&
+                store.listAll(AllUsers).size() == 2, "overview enumerates types and separates sources");
+        require(overview[2].object == L"Folder" && overview[3].object == L"Mixp.UserType",
+                "overview includes folders and ProgIDs with stable target identity");
+        RegistryStore::deleteTree(HKEY_LOCAL_MACHINE, machine + L"\\Folder");
+        RegistryStore::deleteTree(HKEY_CURRENT_USER, user + L"\\Mixp.UserType");
+        pass("all-scope overview finds static menus outside the all-files branch");
 
         std::wstring key = user + L"\\*\\shell\\MixpOpen";
         DWORD number = 0xdeadbeef;

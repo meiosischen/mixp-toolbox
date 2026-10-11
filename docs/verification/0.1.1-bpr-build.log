@@ -1,0 +1,14 @@
+MAKE Version 5.2  Copyright (c) 1987, 2000 Borland
+	Z:\tmp\MIXP~HQF\bcb6\BIN\bcc32 -O2 -H- -Vx -Ve -X- -a8 -b -c -tWM -tW -w-par -I.;src;Z:\tmp\MIXP~HQF\bcb6\include -D;_NO_VCL;WIN32;UNICODE;_UNICODE;WINVER=0x0501;_WIN32_WINNT=0x0501;_WIN32_IE=0x0501 -n.\ src\MainWindow.cpp 
+Borland C++ 5.6 for Win32 Copyright (c) 1993, 2002 Borland
+src\MainWindow.cpp:
+Warning W8027 src\MainWindow.cpp 70: Functions containing try are not expanded inline
+Warning W8027 src\MainWindow.cpp 81: Functions containing for are not expanded inline
+Warning W8027 src\MainWindow.cpp 141: Functions containing for are not expanded inline
+Warning W8027 src\MainWindow.cpp 30: Functions containing some return statements are not expanded inline in function Window::text(int)
+Warning W8027 src\MainWindow.cpp 196: Functions containing aggregate initializers are not expanded inline in function Window::browse()
+	Z:\tmp\MIXP~HQF\bcb6\BIN\brcc32  -I.;src;Z:\tmp\MIXP~HQF\bcb6\include -D;_NO_VCL;WIN32;UNICODE;_UNICODE;WINVER=0x0501;_WIN32_WINNT=0x0501;_WIN32_IE=0x0501 -foMixpToolbox.res .\MixpToolbox.rc
+Borland Resource Compiler  Version 5.40
+Copyright (c) 1990, 1999 Inprise Corporation.  All rights reserved.
+	Z:\tmp\MIXP~HQF\bcb6\BIN\ilink32 @MAKE0000.@@@
+Turbo Incremental Link 5.60 Copyright (c) 1997-2002 Borland

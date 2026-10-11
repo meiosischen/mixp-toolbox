@@ -1,8 +1,42 @@
-# 0.1.0 验证记录
+# 0.1.1 验证记录
+
+日期：2026-10-11。使用真正的 Borland C++Builder 6 工具链，在 macOS Wine 中构建并操作真实窗口；当前仍未在真实 XP 中执行。
+
+本次处理用户在 XP 上报告的“刷新表格为空”和“新增无明显反应”。用户确认点击新增前后，菜单名称及程序路径都可以填写。源码确认 0.1.0 默认只查询 `Software\Classes\*\shell`，该位置可以为空；“新增”复用初始空编辑区，缺少明确模式变化。原版隔离 GUI 测试能成功保存菜单，未在本地复现按钮事件完全失效。修复针对已确认的查询范围和界面反馈问题。
+
+- 启动默认汇总各注册表类型下的 `shell` 菜单，保留 HKCU/HKLM 来源及作用类型；支持按类型搜索。
+- 空表和搜索无匹配时，在表格上方显示明确提示。
+- 点击新增启用编辑区，显示新增模式，将提交按钮改为“添加菜单”；完整填写后才能添加。
+- “全部范围”中的新增自动选择“所有文件”作为目标。
+- 保存后清除搜索条件，必要时调整来源筛选，显示并选中保存项。
+- 相同内部标识存在于多个文件类型时，编辑后仍选中准确的作用类型。
+
+| 项目 | 结果 | 证据 |
+| --- | --- | --- |
+| Release 构建 | 通过 | [本次构建及测试日志](verification/0.1.1-test-build.log) |
+| Debug 构建 | 通过 | [本次 Debug 日志](verification/0.1.1-debug-build.log) |
+| `.bpr` 转换及构建 | BPR2MAK 转换成功，生成的 Makefile 构建通过 | [工程构建日志](verification/0.1.1-bpr-build.log) |
+| 注册表集成测试 | 9 组通过 | 本次构建及测试日志 |
+| GUI 自动测试 | 9 组通过 | 本次构建及测试日志 |
+| 正式 Release EXE | 启动、Unicode 初始化及正常退出通过 | 日志最后的 `shipped Release executable` 记录 |
+| EXE 格式及依赖 | x86 PE32、Windows GUI、仅导入 6 个系统 DLL | [本次 PE 导入记录](verification/0.1.1-pe-imports.log) |
+| 实际窗口截图 | 检查空表提示、新增模式及各类型菜单显示 | [空表](screenshot-empty.png)、[新增](screenshot-new.png)、[汇总](screenshot-overview.png) |
+
+新增回归场景从空测试注册表启动；先刷新空表，再在外部创建文件夹和 ProgID 菜单，验证“所有文件”为空时刷新仍能查到其他范围。首次点击新增后核对输入框启用、模式提示、按钮文字及注册表尚未写入，再通过真实窗口新增、修改、搜索和删除。另验证不同作用类型的同名标识不会误选，以及来源或搜索过滤不再隐藏新保存的菜单。
+
+测试仍只写入隔离的 `Software\MixpToolboxTests\...` 分支并清理。正式 EXE 启动检查不修改实际 Classes 菜单。
+
+界面页眉和 EXE 版本资源显示 **0.1.1**，便携包为 `dist/mixp-toolbox-0.1.1-win32.zip`。编译目标和中间文件保持在忽略的 `build/`、`dist/` 中。
+
+正式 EXE 的 SHA-256：`b7cb35d43217ef4a43126875e6bbc3060f83bd617064b2628493f9bfda8b9366`。ZIP 中的 EXE 与经过测试的 Release 文件逐字节一致。
+
+XP 上请使用 0.1.1 EXE 复测：先在“全部范围”刷新，再点击新增，确认下方进入新增模式；填写名称、真实程序路径和参数后点击“添加菜单”，确认表格出现新项，并重新打开 Explorer 的右键菜单验证启动。这里只管理静态菜单，COM 动态扩展和系统内置菜单行为不在本次管理范围中。
+
+## 0.1.0 初始版验证记录
 
 日期：2026-10-11。源码和产物位于 `mixp-toolbox` 项目目录。
 
-## 环境和结果
+### 环境和结果
 
 使用 BCB6 安装介质中的真正 Win32 工具，通过 macOS Wine 执行：Borland C++ 5.6、MAKE 5.2、BRCC32 5.40、ILINK32 5.60 和 BPR2MAK。没有用现代编译器替代 BCB6。
 
@@ -15,13 +49,13 @@
 | GUI 自动测试 | 6 组通过 | [Release 与测试日志](verification/test-build.log) |
 | 正式 Release EXE | 启动、Unicode 界面初始化及正常退出通过 | 日志最后的 `shipped Release executable` 记录 |
 | EXE 格式和依赖 | x86 PE32、Windows GUI、仅导入系统 DLL | [PE 头和导入表](verification/pe-imports.log) |
-| 界面布局检查 | 已检查实际窗口客户区；Wine 部分中文输入栏字体回退异常 | [截图](screenshot.png) |
+| 界面布局检查 | 已检查实际窗口客户区；Wine 部分中文输入栏字体回退异常 | [初始版截图](screenshot-0.1.0.png) |
 
 Release 优化时有 BCB6 的 W8027 内联提示，编译和链接没有错误。CRT 静态链接，不需要 `cc3260mt.dll` 或 VCL BPL。
 
 导入的系统 DLL 为 ADVAPI32、KERNEL32、COMCTL32、COMDLG32、SHELL32 和 USER32。使用 XP 时代的 API，递归删除通过 `RegDeleteKeyW` 实现，未导入 Vista 才提供的 `RegDeleteTreeW`。
 
-## 已验证的行为
+### 已验证的行为
 
 注册表测试使用真实注册表 API，在 HKCU/HKLM 各自的 `Software\MixpToolboxTests\...` 分支建立临时数据并清理。覆盖：
 
@@ -42,7 +76,7 @@ GUI 测试通过控件消息操作真实窗口，覆盖启动、中文标签、�
 
 Wine 环境补充了中文字体及 Tahoma 字体回退，字体仅用于本地验证，便携包不包含字体。当前 Wine 的部分输入栏中文字仍显示方框；通过 WM_GETTEXT、注册表读取和快照对比已核对中文数据无损，真实 XP 中的字形显示尚未验证。截图来自真实控件，裁去 Wine 未捕获的窗口外框。测试中保存的是命令配置，不会真的运行示例中的 JOE。
 
-## XP 中的验收步骤
+### XP 中的验收步骤
 
 本次没有在真实 Windows XP 中运行程序，也没有在 XP 的 BCB6 IDE 界面中实际打开工程。BPR2MAK 解析成功不等同于已经完成这两项验证。建议在你的 XP 虚拟机按以下步骤验收：
 
